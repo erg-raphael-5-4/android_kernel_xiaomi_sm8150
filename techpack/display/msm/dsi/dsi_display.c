@@ -5741,11 +5741,34 @@ static ssize_t sysfs_fod_hbm_write(struct device *dev,
 	if (rc)
 		return rc;
 
-	rc = dsi_panel_set_fod_hbm(display->panel, !!val);
+	/*
+	 * The existing in-kernel caller sde_connector_update_fod_hbm() runs
+	 * inside the CRTC commit / pre_kickoff path where DSI clocks are
+	 * already on. From an arbitrary sysfs write we need to bring the
+	 * clocks up ourselves — otherwise dsi_panel_tx_cmd_set() returns
+	 * -ETIMEDOUT after dsi_pll_enable() fails to lock the PLL.
+	 *
+	 * Mirrors the pattern in dsi_display_check_status(): panel_lock +
+	 * DSI_ALL_CLKS on + cmd + clocks off + unlock.
+	 */
+	mutex_lock(&display->panel->panel_lock);
+	rc = dsi_display_clk_ctrl(display->dsi_clk_handle,
+				  DSI_ALL_CLKS, DSI_CLK_ON);
 	if (rc) {
-		pr_err("dsi_panel_set_fod_hbm(%u) failed: %d\n", !!val, rc);
-		return rc;
+		pr_err("fod_hbm: failed to enable DSI clocks: %d\n", rc);
+		goto out_unlock;
 	}
+
+	rc = dsi_panel_set_fod_hbm(display->panel, !!val);
+	if (rc)
+		pr_err("dsi_panel_set_fod_hbm(%u) failed: %d\n", !!val, rc);
+
+	dsi_display_clk_ctrl(display->dsi_clk_handle,
+			     DSI_ALL_CLKS, DSI_CLK_OFF);
+out_unlock:
+	mutex_unlock(&display->panel->panel_lock);
+	if (rc)
+		return rc;
 
 	return count;
 }
