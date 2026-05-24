@@ -5714,8 +5714,49 @@ static DEVICE_ATTR(fod_ui, 0444,
 			sysfs_fod_ui_read,
 			NULL);
 
+/*
+ * fod_hbm sysfs: triggers the panel-side HBM-FOD DSI command sequence
+ * (qcom,mdss-dsi-dispparam-hbm-fod-on/off-command). Unlike writing to
+ * the global backlight, this brightens only the FOD circle area, which
+ * is what the goodix optical FP sensor needs for a usable capture.
+ *
+ * Write "1" to enable, "0" to disable. Write-only by design — the
+ * commands are fire-and-forget; readback would require panel state we
+ * don't track here.
+ */
+static ssize_t sysfs_fod_hbm_write(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct dsi_display *display;
+	unsigned int val;
+	int rc;
+
+	display = dev_get_drvdata(dev);
+	if (!display || !display->panel) {
+		pr_err("Invalid display\n");
+		return -EINVAL;
+	}
+
+	rc = kstrtouint(buf, 10, &val);
+	if (rc)
+		return rc;
+
+	rc = dsi_panel_set_fod_hbm(display->panel, !!val);
+	if (rc) {
+		pr_err("dsi_panel_set_fod_hbm(%u) failed: %d\n", !!val, rc);
+		return rc;
+	}
+
+	return count;
+}
+
+static DEVICE_ATTR(fod_hbm, 0220,
+			NULL,
+			sysfs_fod_hbm_write);
+
 static struct attribute *display_fs_attrs[] = {
 	&dev_attr_fod_ui.attr,
+	&dev_attr_fod_hbm.attr,
 	NULL,
 };
 
