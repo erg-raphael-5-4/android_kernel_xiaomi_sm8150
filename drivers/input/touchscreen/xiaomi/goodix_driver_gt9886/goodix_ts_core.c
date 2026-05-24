@@ -800,6 +800,7 @@ static int goodix_ts_input_report(struct input_dev *dev,
 	struct goodix_ts_device *ts_dev = core_data->ts_dev;
 	unsigned int touch_num = touch_data->touch_num;
 	int i, id;
+	bool fod_touch_active = false;
 
 	if (core_data->fod_status) {
 		if ((core_data->event_status & 0x20) == 0x20) {
@@ -839,6 +840,12 @@ static int goodix_ts_input_report(struct input_dev *dev,
 				ts_info("[GTP] %s report press:%d", __func__,
 					i);
 			}
+			if (core_data->fod_status) {
+				int dx = (int)coords->x - CENTER_X;
+				int dy = (int)coords->y - CENTER_Y;
+				if (dx * dx + dy * dy <= 95 * 95)
+					fod_touch_active = true;
+			}
 			dev_dbg(core_data->ts_dev->dev,
 				"[GTP] %s report:[%d](%d, %d, %d, %d)",
 				__func__, id, touch_data->coords[0].x,
@@ -871,8 +878,14 @@ static int goodix_ts_input_report(struct input_dev *dev,
 		/*input_report_key(core_data->input_dev, KEY_INFO, 1);*/
 		core_data->fod_pressed = true;
 		ts_info("BTN_INFO press");
+	} else if (fod_touch_active && core_data->fod_status &&
+		   !core_data->fod_pressed) {
+		input_report_key(core_data->input_dev, BTN_INFO, 1);
+		core_data->fod_pressed = true;
+		ts_info("BTN_INFO press (screen-on)");
 	} else if (core_data->fod_pressed &&
-		   (core_data->event_status & 0x88) != 0x88) {
+		   (core_data->event_status & 0x88) != 0x88 &&
+		   !fod_touch_active) {
 		if (unlikely(!core_data->fod_test)) {
 			input_report_key(core_data->input_dev, BTN_INFO, 0);
 			/*input_report_key(core_data->input_dev, KEY_INFO, 0);*/
