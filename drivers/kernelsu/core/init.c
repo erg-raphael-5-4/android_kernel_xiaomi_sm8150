@@ -12,27 +12,26 @@
 #include "klog.h" // IWYU pragma: keep
 #include "manager/manager_observer.h"
 #include "manager/throne_tracker.h"
-#include "hook/syscall_hook_manager.h"
-#include "hook/lsm_hook.h"
+#include "hook/hook_manager.h"
 #include "runtime/ksud.h"
 #include "runtime/ksud_boot.h"
 #include "supercall/supercall.h"
 #include "ksu.h"
 #include "infra/file_wrapper.h"
 #include "selinux/selinux.h"
-#include "hook/syscall_hook.h"
-#include "feature/adb_root.h"
-#include "feature/selinux_hide.h"
-#include "feature/sulog.h"
-#include "infra/symbol_resolver.h"
 
-#if defined(__x86_64__) && !defined(CONFIG_KSU_X86_PATCH_SYSCALL_DISPATCHER)
-#include <asm/cpufeature.h>
-#include <linux/version.h>
-#ifndef X86_FEATURE_INDIRECT_SAFE
-#error "FATAL: Your kernel is missing the indirect syscall bypass patches!"
-#endif
-#endif
+extern void __init ksu_lsm_hook_init(void);
+extern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
+					void *argv, void *envp, int *flags);
+extern int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,
+				    void *argv, void *envp, int *flags);
+int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv,
+			void *envp, int *flags)
+{
+	ksu_handle_execveat_ksud(fd, filename_ptr, argv, envp, flags);
+	return ksu_handle_execveat_sucompat(fd, filename_ptr, argv, envp,
+					    flags);
+}
 
 // workaround for A12-5.10 kernel
 // Some third-party kernel (e.g. linegaeOS) uses wrong toolchain, which supports
@@ -74,34 +73,8 @@ __attribute__((naked)) int __init kernelsu_init_early(void)
 struct cred *ksu_cred;
 bool ksu_late_loaded;
 
-#ifdef CONFIG_KSU_DEBUG
-bool allow_shell = true;
-#else
-bool allow_shell = false;
-#endif
-module_param(allow_shell, bool, 0);
-
-bool ksu_no_custom_rc = false;
-module_param_named(norc, ksu_no_custom_rc, bool, 0);
-
 int __init kernelsu_init(void)
 {
-#if defined(__x86_64__) && !defined(CONFIG_KSU_X86_PATCH_SYSCALL_DISPATCHER)
-    // If the kernel has the hardening patch, X86_FEATURE_INDIRECT_SAFE must be set
-    if (!boot_cpu_has(X86_FEATURE_INDIRECT_SAFE)) {
-        pr_alert("*************************************************************");
-        pr_alert("**     NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE    **");
-        pr_alert("**                                                         **");
-        pr_alert("**        X86_FEATURE_INDIRECT_SAFE is not enabled!        **");
-        pr_alert("**      KernelSU will abort initialization to prevent      **");
-        pr_alert("**                     kernel panic.                       **");
-        pr_alert("**                                                         **");
-        pr_alert("**     NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE    **");
-        pr_alert("*************************************************************");
-        return -ENOSYS;
-    }
-#endif
-
 #ifdef MODULE
 	ksu_late_loaded = (current->pid != 1);
 #else
@@ -117,27 +90,17 @@ int __init kernelsu_init(void)
 	pr_alert("**     NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE    **");
 	pr_alert("*************************************************************");
 #endif
-	if (allow_shell) {
-		pr_alert("shell is allowed at init!");
-	}
 
-	ksu_cred = prepare_creds();
-	if (!ksu_cred) {
-		pr_err("prepare cred failed!\n");
-		return -ENOSYS;
-	}
-
-	ksu_init_symbol_resolver();
-	ksu_syscall_hook_init();
+    ksu_cred = prepare_creds();
+    if (!ksu_cred) {
+        pr_err("prepare cred failed!\n");
+    }
 
 	ksu_feature_init();
-	ksu_sulog_init();
-	ksu_adb_root_init();
-	ksu_lsm_hook_init();
-	ksu_selinux_hide_init();
 
 	ksu_supercalls_init();
-	ksu_app_profile_init();
+
+	
 
 	if (ksu_late_loaded) {
 		pr_info("late load mode, skipping kprobe hooks\n");
@@ -170,6 +133,8 @@ int __init kernelsu_init(void)
 
 	} else {
 		ksu_syscall_hook_manager_init();
+		
+		ksu_lsm_hook_init();
 
 		ksu_allowlist_init();
 
@@ -208,17 +173,11 @@ void __exit kernelsu_exit(void)
 
 	ksu_allowlist_exit();
 
-	ksu_selinux_hide_exit();
-
-	ksu_lsm_hook_exit();
-
-	ksu_adb_root_exit();
-
-	ksu_sulog_exit();
-
 	ksu_feature_exit();
 
-	put_cred(ksu_cred);
+	if (ksu_cred) {
+		put_cred(ksu_cred);
+	}
 }
 
 #if NEED_OWN_STACKPROTECTOR
