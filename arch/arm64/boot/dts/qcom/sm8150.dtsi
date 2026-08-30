@@ -490,7 +490,25 @@
 		alloc-ranges = <0x0 0x00000000 0x0 0xffffffff>;
 		reusable;
 		alignment = <0x0 0x400000>;
-		size = <0x0 0x800000>;
+		/*
+		 * 32MB rather than the stock 8MB. The Goodix FOD HAL asks
+		 * ION heap 13 (SPSS, HYP_CMA, backed by this region) for a
+		 * 4MB buffer to hand the TA its HMAC key. At 8MB with 4MB
+		 * alignment there are only two candidate slots, and both are
+		 * occupied by movable pages (zram/zsmalloc, page cache) by
+		 * the time the HAL starts ~34s into boot. Migration cannot
+		 * free either, so cma_alloc fails:
+		 *
+		 *   cma_alloc: sp_region: alloc failed, req-size: 1024 pages,
+		 *              ret: -12
+		 *   qcom,ion:qcom,ion-heap@13: Unable to allocate cma buffer
+		 *   [GF_HAL][CaEntry] [sendCommand] allocate ion memory failed
+		 *
+		 * which kills fingerprint entirely. 32MB gives eight slots.
+		 * The region stays "reusable", so the extra memory is still
+		 * available to the system for movable allocations.
+		 */
+		size = <0x0 0x2000000>;
 	};
 
 	secure_display_memory: secure_display_region { /* Secure UI */
