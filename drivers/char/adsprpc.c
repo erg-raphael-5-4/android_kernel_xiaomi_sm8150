@@ -3545,7 +3545,7 @@ bail:
 static int fastrpc_create_persistent_headers(struct fastrpc_file *fl,
 			uint32_t user_concurrency)
 {
-	int err = 0, i = 0;
+	int err = 0, i = 0, nonfatal = 0;
 	uint64_t virtb = 0;
 	struct fastrpc_buf *pers_hdr_buf = NULL, *hdr_bufs = NULL, *buf = NULL;
 	unsigned int num_pers_hdrs = 0;
@@ -3571,8 +3571,28 @@ static int fastrpc_create_persistent_headers(struct fastrpc_file *fl,
 	err = fastrpc_mem_map_to_dsp(fl, -1, 0, ADSP_MMAP_PERSIST_HDR, 0,
 			pers_hdr_buf->phys, pers_hdr_buf->size,
 			&pers_hdr_buf->raddr);
-	if (err)
+	if (err) {
+		/*
+		 * Older DSP firmware does not implement ADSP_MMAP_PERSIST_HDR
+		 * and rejects the map with a remote error (0x80000414 on
+		 * raphael, whose dsp partition predates this kernel).
+		 *
+		 * Persistent headers are only a per-invoke allocation
+		 * optimisation, so this must not be fatal. Returning the error
+		 * fails the FASTRPC_INVOKE2_KERNEL_OPTIMIZATIONS ioctl, which
+		 * aborts the caller's session setup -- on raphael that breaks
+		 * Goodix fingerprint feature extraction outright
+		 * (GF_CMD_ALGO_AUTHENTICATE_HVX_GET_FEATURE_THREE fail, every
+		 * match_score pinned at the "no features" sentinel).
+		 *
+		 * Clean up and report success; the session then uses ordinary
+		 * per-invoke headers.
+		 */
+		pr_warn("adsprpc: DSP rejected persistent headers (err 0x%x), continuing without them\n",
+			err);
+		nonfatal = 1;
 		goto bail;
+	}
 
 	/* Divide and store as N chunks, each of 1 page size */
 	hdr_bufs = kcalloc(num_pers_hdrs, sizeof(struct fastrpc_buf),
@@ -3607,7 +3627,7 @@ bail:
 		if (!IS_ERR_OR_NULL(hdr_bufs))
 			kfree(hdr_bufs);
 	}
-	return err;
+	return nonfatal ? 0 : err;
 }
 
 static int fastrpc_internal_invoke2(struct fastrpc_file *fl,
