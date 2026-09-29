@@ -3369,6 +3369,21 @@ static void ufshcd_print_fsm_state(struct ufs_hba *hba)
 	}
 	spin_unlock_irqrestore(hba->host->host_lock, flags);
 
+	/*
+	 * Reading the FSM state is a DME command. It must not be issued from
+	 * the register dump of a failed UIC command: ufshcd_uic_pwr_ctrl()
+	 * still holds uic_cmd_mutex there, and when the failure happened in
+	 * ufshcd_gate_work() the ufshcd_hold() inside the DME call would
+	 * flush the very work it runs in. Either way the host deadlocks and
+	 * all I/O stops.
+	 */
+	if (mutex_is_locked(&hba->uic_cmd_mutex) ||
+	    current_work() == &hba->clk_gating.gate_work.work) {
+		dev_err(hba->dev, "%s: skipped, UIC busy or in clock gating work\n",
+			__func__);
+		return;
+	}
+
 	err = ufshcd_dme_get(hba,
 			     UIC_ARG_MIB_SEL(MPHY_TX_FSM_STATE,
 					     UIC_ARG_MPHY_TX_GEN_SEL_INDEX(0)),
