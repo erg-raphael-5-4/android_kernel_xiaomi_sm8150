@@ -1101,6 +1101,18 @@ config CGROUP_BPF
 	  BPF_CGROUP_INET_INGRESS will be executed on the ingress path of
 	  inet sockets.
 
+config CGROUP_NOPREFIX_LINKS
+	bool "Prefixed aliases for files in noprefix v1 hierarchies"
+	default n
+	help
+	  Android mounts its v1 cgroup hierarchies (cpuset and friends) with
+	  "noprefix", so the control files lack the "<controller>." prefix.
+	  Container runtimes such as LXC expect the prefixed names. This adds
+	  "<controller>.<file>" symlinks next to the real files in those
+	  hierarchies. Hierarchies mounted normally are not affected.
+
+	  If unsure, say N.
+
 config CGROUP_DEBUG
 	bool "Debug controller"
 	default n

@@ -1667,6 +1667,26 @@ struct cgroup *cgroup_kn_lock_live(struct kernfs_node *kn, bool drain_offline)
 	return NULL;
 }
 
+#ifdef CONFIG_CGROUP_NOPREFIX_LINKS
+/*
+ * Android mounts its v1 hierarchies with "noprefix", so the files are
+ * named "cpus", "tasks" and so on. Container runtimes expect the
+ * prefixed names ("cpuset.cpus"); add those as symlinks next to the
+ * real files.
+ */
+static char *cgroup_prefix_link_name(struct cgroup *cgrp,
+				     const struct cftype *cft, char *buf)
+{
+	if (!cft->ss || (cft->flags & CFTYPE_NO_PREFIX) ||
+	    !(cgrp->root->flags & CGRP_ROOT_NOPREFIX))
+		return NULL;
+
+	snprintf(buf, CGROUP_FILE_NAME_MAX, "%s.%s", cft->ss->legacy_name,
+		 cft->name);
+	return buf;
+}
+#endif
+
 static void cgroup_rm_file(struct cgroup *cgrp, const struct cftype *cft)
 {
 	char name[CGROUP_FILE_NAME_MAX];
@@ -1685,6 +1705,10 @@ static void cgroup_rm_file(struct cgroup *cgrp, const struct cftype *cft)
 	}
 
 	kernfs_remove_by_name(cgrp->kn, cgroup_file_name(cgrp, cft, name));
+#ifdef CONFIG_CGROUP_NOPREFIX_LINKS
+	if (cgroup_prefix_link_name(cgrp, cft, name))
+		kernfs_remove_by_name(cgrp->kn, name);
+#endif
 }
 
 /**
@@ -4104,6 +4128,12 @@ static int cgroup_add_file(struct cgroup_subsys_state *css, struct cgroup *cgrp,
 		cfile->kn = kn;
 		spin_unlock_irq(&cgroup_file_kn_lock);
 	}
+
+#ifdef CONFIG_CGROUP_NOPREFIX_LINKS
+	/* Best effort: a missing alias must not fail the real file. */
+	if (cgroup_prefix_link_name(cgrp, cft, name))
+		kernfs_create_link(cgrp->kn, name, kn);
+#endif
 
 	return 0;
 }
