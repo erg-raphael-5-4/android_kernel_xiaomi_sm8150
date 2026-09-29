@@ -185,16 +185,6 @@ ssize_t nfc_i2c_dev_read(struct file *filp, char __user *buf,
 	}
 	memset(tmp, 0x00, count);
 
-	/*
-	 * A powered-down NFCC NACKs, and the HAL treats the resulting
-	 * -ENOTCONN as a fatal VBAT error and aborts. Report a plain I/O error
-	 * instead, which it retries.
-	 */
-	if (!gpio_get_value(nfc_dev->gpio.ven)) {
-		ret = -EIO;
-		goto err;
-	}
-
 	/* Read data */
 	ret = i2c_read(nfc_dev, tmp, count);
 	if (ret <= 0) {
@@ -392,21 +382,6 @@ int nfc_i2c_dev_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	device_init_wakeup(&client->dev, true);
 	i2c_dev->irq_wake_up = false;
 	nfc_dev->is_ese_session_active = false;
-
-#ifdef CONFIG_MACH_XIAOMI_SM8150
-	/*
-	 * nfcc_hw_check() is skipped here, and it is what leaves the NFCC
-	 * powered after probe elsewhere. The snxxx HAL relies on that: it
-	 * starts reading and sends GET_VERSION before it issues NFC_SET_PWR,
-	 * so with VEN still low every transfer NACKs (-ENOTCONN) and the HAL
-	 * aborts on the first read. Bring the NFCC up the same way
-	 * nfcc_hw_check() does.
-	 */
-	gpio_set_ven(nfc_dev, 1);
-	gpio_set_ven(nfc_dev, 0);
-	gpio_set_ven(nfc_dev, 1);
-	nfc_dev->nfc_ven_enabled = true;
-#endif
 
 	pr_info("%s success\n", __func__);
 	return 0;
