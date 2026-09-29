@@ -83,11 +83,11 @@ static void ksu_mark_running_process_locked()
 		if (ksu_root_process || is_zygote_process  || is_shell || is_init
 			|| ksu_is_allow_uid(uid)) {
 			ksu_set_task_tracepoint_flag(t);
-			pr_info("hook_manager: mark process: pid:%d, uid: %d, comm:%s\n",
+			pr_debug("hook_manager: mark process: pid:%d, uid: %d, comm:%s\n",
 					t->pid, uid, t->comm);
 		} else {
 			ksu_clear_task_tracepoint_flag(t);
-			pr_info("hook_manager: unmark process: pid:%d, uid: %d, comm:%s\n",
+			pr_debug("hook_manager: unmark process: pid:%d, uid: %d, comm:%s\n",
 					t->pid, uid, t->comm);
 		}
 		put_cred(cred);
