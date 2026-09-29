@@ -32,6 +32,17 @@
 #include "asm/cacheflush.h"
 #include "asm-generic/fixmap.h"
 
+// pmd_leaf()/pud_leaf() only exist from 5.6; older arm64 kernels call a block
+// (section) mapping pmd_sect()/pud_sect(). Without them the walk below treats
+// the kernel's 2M block mappings (e.g. rodata holding sys_call_table) as bad
+// table entries and fails.
+#if !defined(pmd_leaf) && !defined(pmd_large) && defined(pmd_sect)
+#define pmd_leaf(pmd) pmd_sect(pmd)
+#endif
+#if !defined(pud_leaf) && defined(pud_sect)
+#define pud_leaf(pud) pud_sect(pud)
+#endif
+
 // https://github.com/fuqiuluo/ovo/blob/f7da411458e87d32438dc14fce5a3313ed0c967e/ovo/mmuhack.c#L21
 
 // Translate a kernel virtual address to a physical address by walking the
