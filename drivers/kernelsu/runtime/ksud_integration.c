@@ -169,9 +169,10 @@ static struct work_struct __maybe_unused stop_init_rc_hook_work;
 static struct work_struct __maybe_unused stop_execve_hook_work;
 static struct work_struct __maybe_unused stop_input_hook_work;
 static DECLARE_COMPLETION(stop_input_hook_work_complete);
-#else
-bool ksu_init_rc_hook __read_mostly = true;
 #endif
+// Read by the manual-hook read paths (ksu_handle_sys_read/ksu_handle_vfs_read),
+// which are built in every configuration.
+bool ksu_init_rc_hook __read_mostly = true;
 
 // These are referenced directly from patched kernel sources (manual hook
 // integration points), so they must exist in every build configuration
