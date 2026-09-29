@@ -141,6 +141,13 @@ endif
 $(info -- KernelSU-Next Manager signature size: $(KSU_NEXT_MANAGER_SIZE))
 $(info -- KernelSU-Next Manager signature hash: $(KSU_NEXT_MANAGER_HASH))
 
+# Some pre-5.8 kernels carry the 5.8 nofault API backport (copy_to_kernel_nofault
+# and friends) and no longer have probe_kernel_write().
+ifeq ($(shell grep -q "copy_to_kernel_nofault" $(srctree)/include/linux/uaccess.h; echo $$?),0)
+ccflags-y += -DKSU_HAS_COPY_TO_KERNEL_NOFAULT
+$(info -- KSU_NEXT: kernel has copy_to_kernel_nofault)
+endif
+
 # KSU: checks for available hook
 ## Logic flipped for HAVE_KSU_HOOK: 0 is success, 1 is failure
 HAVE_KSU_HOOK ?= 1

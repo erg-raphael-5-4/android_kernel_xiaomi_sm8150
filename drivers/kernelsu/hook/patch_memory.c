@@ -10,7 +10,7 @@
 
 // copy_to_kernel_nofault() was introduced in 5.8; before that it was
 // named probe_kernel_write()
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 8, 0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 8, 0) && !defined(KSU_HAS_COPY_TO_KERNEL_NOFAULT)
 #define copy_to_kernel_nofault(dst, src, size)                                 \
 	probe_kernel_write((dst), (src), (size))
 #endif
